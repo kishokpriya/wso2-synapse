@@ -343,8 +343,7 @@ public class VFSTransportListener extends AbstractPollingTransportListener<PollT
                                     metrics.incrementMessagesReceived();
 
                                 } catch (Exception e) {
-                                    logException("Error processing File URI : " 
-                                    		+ VFSUtils.maskURLPassword(child.getName().getURI()), e);
+                                    logException("Error processing File URI : " + VFSUtils.maskURLPassword(child.getName().getURI()), e);
                                     failCount++;
                                     // tell moveOrDeleteAfterProcessing() file failed
                                     entry.setLastPollState(PollTableEntry.FAILED);
@@ -423,17 +422,16 @@ public class VFSTransportListener extends AbstractPollingTransportListener<PollT
                 entry.setNextPollTime(now + entry.getPollInterval());
 
             } else if (log.isDebugEnabled()) {
-				log.debug("Unable to access or read file or directory : "
-						+ VFSUtils.maskURLPassword(fileURI)
-						+ "."
-						+ " Reason: "
-						+ (fileObject.exists() ? (fileObject.isReadable() ? "Unknown reason"
-								: "The file can not be read!")
-								: "The file does not exists!"));
+				log.debug("Unable to access or read file or directory : " 
+						+ VFSUtils.maskURLPassword(fileURI)+ "." 
+						+ " Reason: " 
+						+ (fileObject.exists()? (fileObject.isReadable()? "Unknown reason":"The file can not be read!"):
+													                        "The file does not exists!"));
             }
             onPollCompletion(entry);
         } catch (FileSystemException e) {
-            processFailure("Error checking for existence and readability : " + VFSUtils.maskURLPassword(fileURI), e, entry);
+            processFailure("Error checking for existence and readability : " 
+            		+ VFSUtils.maskURLPassword(fileURI), e, entry);
         }
     }
 
@@ -475,7 +473,8 @@ public class VFSTransportListener extends AbstractPollingTransportListener<PollT
                 FileObject dest = moveToDirectory.resolveFile(
                         prefix + fileObject.getName().getBaseName());
                 if (log.isDebugEnabled()) {
-                    log.debug("Moving to file :" + VFSUtils.maskURLPassword(dest.getName().getURI()));
+                    log.debug("Moving to file :" 
+                    		+ VFSUtils.maskURLPassword(dest.getName().getURI()));
                 }
                 try {
                     fileObject.moveTo(dest);
@@ -786,7 +785,8 @@ public class VFSTransportListener extends AbstractPollingTransportListener<PollT
                     fileObject.moveTo(dest);  // FIXME - when an exception occurs here it causes the in folder to vanish
                 } catch (FileSystemException e) {
                     handleException("Error moving the failed file : " 
-                    		+ VFSUtils.maskURLPassword(fileObject.toString()) + " to " + moveToDirectoryURI, e);
+                    		+ VFSUtils.maskURLPassword(fileObject.toString()) 
+                    		+ " to " + moveToDirectoryURI, e);
                 }
             } catch (FileSystemException e) {
                 handleException("Cloud not move the failed file object '" 
