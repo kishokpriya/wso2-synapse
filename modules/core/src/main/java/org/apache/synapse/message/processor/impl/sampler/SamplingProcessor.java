@@ -25,32 +25,31 @@ import org.apache.synapse.task.Task;
 
 public class SamplingProcessor extends ScheduledMessageProcessor {
 
-	public static final String CONCURRENCY = "concurrency";
-	public static final String SEQUENCE = "sequence";
+    public static final String CONCURRENCY = "concurrency";
+    public static final String SEQUENCE = "sequence";
 
-	private SamplingProcessorView view;
+    private SamplingProcessorView view;
 
-	@Override
-	public void init(SynapseEnvironment se) {
-		super.init(se);
+    @Override
+    public void init(SynapseEnvironment se) {
+        super.init(se);
 
-		try {
-			view = new SamplingProcessorView(this);
-		} catch (Exception e) {
-			throw new SynapseException(e);
-		}
+        try {
+            view = new SamplingProcessorView(this);
+        } catch (Exception e) {
+            throw new SynapseException(e);
+        }
 
-		// register MBean
-		org.apache.synapse.commons.jmx.MBeanRegistrar.getInstance()
-				.registerMBean(view, "Message Sampling Processor view",
-						getName());
-	}
+        // register MBean
+        org.apache.synapse.commons.jmx.MBeanRegistrar.getInstance().registerMBean(view,
+                "Message Sampling Processor view", getName());
+    }
 
-	public SamplingProcessorView getView() {
+    public SamplingProcessorView getView() {
 		return view;
 	}
 
-	@Override
+    @Override
 	protected Task getTask() {
 		return new SamplingService(this, synapseEnvironment);
 	}

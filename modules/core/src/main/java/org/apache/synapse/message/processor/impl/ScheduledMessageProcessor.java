@@ -42,462 +42,410 @@ import org.apache.synapse.task.TaskManager;
 import static org.quartz.SimpleScheduleBuilder.simpleSchedule;
 import static org.quartz.TriggerBuilder.newTrigger;
 
-public abstract class ScheduledMessageProcessor extends
-		AbstractMessageProcessor {
-	private static final Log logger = LogFactory
-			.getLog(ScheduledMessageProcessor.class.getName());
+public abstract class ScheduledMessageProcessor extends AbstractMessageProcessor {
+    private static final Log logger = LogFactory.getLog(ScheduledMessageProcessor.class.getName());
+ 
+    /**
+     *  Threshould interval value is 1000.
+     */
+    public static final long THRESHOULD_INTERVAL = 1000;
 
-	/**
-	 * Threshould interval value is 1000.
-	 */
-	public static final long THRESHOULD_INTERVAL = 1000;
+    /**
+     * The scheduler, run the the processor
+     */
+    protected Scheduler scheduler = null;
 
-	/**
-	 * The scheduler, run the the processor
-	 */
-	protected Scheduler scheduler = null;
+    /**
+     * The interval at which this processor runs , default value is 1000ms
+     */
+    protected long interval = 1000;
 
-	/**
-	 * The interval at which this processor runs , default value is 1000ms
-	 */
-	protected long interval = 1000;
+    /**
+     * The quartz configuration file if specified as a parameter
+     */
+    protected String quartzConfig = null;
 
-	/**
-	 * The quartz configuration file if specified as a parameter
-	 */
-	protected String quartzConfig = null;
+    /**
+     * A cron expression to run the sampler
+     */
+    protected String cronExpression = null;
 
-	/**
-	 * A cron expression to run the sampler
-	 */
-	protected String cronExpression = null;
+    /**
+     * This only needed for the associated service. This value could not be changed manually. Moving to this state
+     * only happens when the service reaches the maximum retry limit
+     */
+    protected AtomicBoolean isPaused = new AtomicBoolean(false);
 
-	/**
-	 * This only needed for the associated service. This value could not be
-	 * changed manually. Moving to this state only happens when the service
-	 * reaches the maximum retry limit
-	 */
-	protected AtomicBoolean isPaused = new AtomicBoolean(false);
-
-	private AtomicBoolean isActivated = new AtomicBoolean(true);
-
-	private int memberCount = 1;
-
+    private AtomicBoolean isActivated = new AtomicBoolean(true);
+    
+    private int memberCount = 1;
+	
 	public final String MEMBER_COUNT = "member.count";
-
+	
 	private TaskManager nTaskManager;
-
+	
 	private MessageProcessorState messageProcessorState = MessageProcessorState.OTHER;
-
+	
 	protected SynapseEnvironment synapseEnvironment;
 
-	/**
-	 * This is specially used for REST scenarios where http status codes can
-	 * take semantics in a RESTful architecture.
-	 */
-	protected String[] nonRetryStatusCodes = null;
+    /**
+     * This is specially used for REST scenarios where http status codes can take semantics in a RESTful architecture.
+     */
+    protected String[] nonRetryStatusCodes = null;
 
-	public void init(SynapseEnvironment se) {
-		if (!isPinnedServer(se.getServerContextInformation()
-				.getServerConfigurationInformation().getServerName())) {
-			// If it is not a pinned server we do not start the message
-			// processor. In that server.
-			setActivated(false);
-		}
+    public void init(SynapseEnvironment se) {
+        if (!isPinnedServer(se.getServerContextInformation().getServerConfigurationInformation()
+                .getServerName())) {
+            // If it is not a pinned server we do not start the message processor. In that server.
+            setActivated(false);
+        }
 
-		super.init(se);
-		StdSchedulerFactory sf = null;
+        super.init(se);
+        StdSchedulerFactory sf = null;
 
-		try {
-			sf = new StdSchedulerFactory(getSchedulerProperties(this.name));
-			if (quartzConfig != null && !"".equals(quartzConfig)) {
-				if (logger.isDebugEnabled()) {
-					logger.debug("Initiating a Scheduler with configuration : "
-							+ quartzConfig);
-				}
-				sf.initialize(quartzConfig);
-			}
-		} catch (SchedulerException e) {
-			throw new SynapseException("Error initiating scheduler factory "
-					+ sf + "with configuration loaded from " + quartzConfig, e);
-		}
+        try {
+            sf = new StdSchedulerFactory(getSchedulerProperties(this.name));
+            if (quartzConfig != null && !"".equals(quartzConfig)) {
+                if (logger.isDebugEnabled()) {
+                    logger.debug("Initiating a Scheduler with configuration : " + quartzConfig);
+                }
+                sf.initialize(quartzConfig);
+            }
+        } catch (SchedulerException e) {
+            throw new SynapseException("Error initiating scheduler factory "
+                    + sf + "with configuration loaded from " + quartzConfig, e);
+        }
 
-		try {
-			scheduler = sf.getScheduler();
-		} catch (SchedulerException e) {
-			throw new SynapseException(
-					"Error getting a  scheduler instance form scheduler"
-							+ " factory " + sf, e);
-		}
+        try {
+            scheduler = sf.getScheduler();
+        } catch (SchedulerException e) {
+            throw new SynapseException("Error getting a  scheduler instance form scheduler" +
+                    " factory " + sf, e);
+        }
 
-		this.start();
-	}
+        this.start();
+    }
 
-	public boolean start() {
-		for (int i = 0; i < memberCount; i++) {
-			/*
-			 * Make sure to fetch the task after initializing the message sender
-			 * and consumer properly. Otherwise you may get NullPointer
-			 * exceptions.
-			 */
-			Task task = this.getTask();
-			TaskDescription taskDescription = new TaskDescription();
-			/*
-			 * The same name should be used when deactivating, pausing,
-			 * activating,deleting etc.
-			 */
-			if (i == 0) {
-				taskDescription.setName(name);
-			} else if (i > 0) {
-				taskDescription.setName(name + i);
-			}
+    	public boolean start() {
+    			for (int i = 0; i < memberCount; i++) {
+    				/*
+    				 * Make sure to fetch the task after initializing the message sender
+    				 * and consumer properly. Otherwise you may get NullPointer
+    				 * exceptions.
+    				 */
+    				Task task = this.getTask();
+    				TaskDescription taskDescription = new TaskDescription();
+    				/*
+    				 * The same name should be used when deactivating, pausing,
+    				 * activating,deleting etc.
+    				 */
+    				if (i == 0) {
+    					taskDescription.setName(name);
+    				} else if (i > 0) {
+    					taskDescription.setName(name + i);
+    				}
+    	
+    				taskDescription
+    						.setTaskGroup(MessageProcessorConstants.SCHEDULED_MESSAGE_PROCESSOR_GROUP);
+    				/*
+    				 * If this interval value is less than 1000 ms, ntask will throw an
+    				 * exception while building the task. So to get around that we are
+    				 * setting threshold interval value of 1000 ms to the task
+    				 * description here. But actual interval value may be less than 1000
+    				 * ms, and hence isThrotling is set to TRUE.
+    				 */
+    				if (interval < THRESHOULD_INTERVAL) {
+    					taskDescription.setInterval(THRESHOULD_INTERVAL);
+    				} else {
+    					taskDescription.setInterval(interval);
+    				}
+    				taskDescription.setIntervalInMs(true);
+    				taskDescription.addResource(TaskDescription.INSTANCE, task);
+    				taskDescription.addResource(TaskDescription.CLASSNAME, task
+    						.getClass().getName());
+    	
+    				nTaskManager.schedule(taskDescription);
+    	
+    			}
+    			messageProcessorState = MessageProcessorState.STARTED;
+    			if (logger.isDebugEnabled()) {
+    				logger.debug("Started message processor. [" + getName() + "].");
+    			}
+    			return true;
+    		}
 
-			taskDescription
-					.setTaskGroup(MessageProcessorConstants.SCHEDULED_MESSAGE_PROCESSOR_GROUP);
-			/*
-			 * If this interval value is less than 1000 ms, ntask will throw an
-			 * exception while building the task. So to get around that we are
-			 * setting threshold interval value of 1000 ms to the task
-			 * description here. But actual interval value may be less than 1000
-			 * ms, and hence isThrotling is set to TRUE.
-			 */
-			if (interval < THRESHOULD_INTERVAL) {
-				taskDescription.setInterval(THRESHOULD_INTERVAL);
-			} else {
-				taskDescription.setInterval(interval);
-			}
-			taskDescription.setIntervalInMs(true);
-			taskDescription.addResource(TaskDescription.INSTANCE, task);
-			taskDescription.addResource(TaskDescription.CLASSNAME, task
-					.getClass().getName());
+    public boolean isDeactivated() {
+        try {
+            return scheduler.isInStandbyMode();
+        } catch (SchedulerException e) {
+            throw new SynapseException("Error Standing-by Message processor scheduler ", e);
+        }
+    }
 
-			nTaskManager.schedule(taskDescription);
+    public void setParameters(Map<String, Object> parameters) {
 
-		}
-		messageProcessorState = MessageProcessorState.STARTED;
-		if (logger.isDebugEnabled()) {
-			logger.debug("Started message processor. [" + getName() + "].");
-		}
-		return true;
-	}
+        super.setParameters(parameters);
 
-	public boolean isDeactivated() {
-		try {
-			return scheduler.isInStandbyMode();
-		} catch (SchedulerException e) {
-			throw new SynapseException(
-					"Error Standing-by Message processor scheduler ", e);
-		}
-	}
+        if (parameters != null && !parameters.isEmpty()) {
+            Object o = parameters.get(MessageProcessorConstants.CRON_EXPRESSION);
+            if (o != null) {
+                cronExpression = o.toString();
+            }
+            o = parameters.get(MessageProcessorConstants.INTERVAL);
+            if (o != null) {
+                interval = Integer.parseInt(o.toString());
+            }
+            o = parameters.get(MEMBER_COUNT);
+            if (o != null) {
+            	memberCount = Integer.parseInt(o.toString());
+            }
+            o = parameters.get(MessageProcessorConstants.IS_ACTIVATED);
+            if (o != null) {
+            	setActivated(Boolean.valueOf(o.toString()));
+            }
+            o = parameters.get(ForwardingProcessorConstants.NON_RETRY_STATUS_CODES);
+            if (o != null) {
+                // we take it out of param set and send it because we need split the array.
+                nonRetryStatusCodes = o.toString().split(",");
+            }
+        }
+    }
 
-	public void setParameters(Map<String, Object> parameters) {
+    public boolean stop() {
+        try {
+            if (scheduler != null) {
+                // There could be servers that are disabled at startup time. therefore not started but initiated.
+                if (scheduler.isStarted()) {
+                    // This is to immediately stop the scheduler to avoid firing new services
+                    scheduler.standby();
 
-		super.setParameters(parameters);
+                    if (logger.isDebugEnabled()) {
+                        logger.debug("ShuttingDown Message Processor Scheduler : " + scheduler.getMetaData());
+                    }
 
-		if (parameters != null && !parameters.isEmpty()) {
-			Object o = parameters
-					.get(MessageProcessorConstants.CRON_EXPRESSION);
-			if (o != null) {
-				cronExpression = o.toString();
-			}
-			o = parameters.get(MessageProcessorConstants.INTERVAL);
-			if (o != null) {
-				interval = Integer.parseInt(o.toString());
-			}
-			o = parameters.get(MEMBER_COUNT);
-			if (o != null) {
-				memberCount = Integer.parseInt(o.toString());
-			}
-			o = parameters.get(MessageProcessorConstants.IS_ACTIVATED);
-			if (o != null) {
-				setActivated(Boolean.valueOf(o.toString()));
-			}
-			o = parameters
-					.get(ForwardingProcessorConstants.NON_RETRY_STATUS_CODES);
-			if (o != null) {
-				// we take it out of param set and send it because we need split
-				// the array.
-				nonRetryStatusCodes = o.toString().split(",");
-			}
-		}
-	}
+                    try {
+                        scheduler.interrupt(new JobKey(name + "-job", MessageProcessorConstants.SCHEDULED_MESSAGE_PROCESSOR_GROUP));
+                    } catch (UnableToInterruptJobException e) {
+                        logger.info("Unable to interrupt job [" + name + "-job]");
+                    }
+                }
 
-	public boolean stop() {
-		try {
-			if (scheduler != null) {
-				// There could be servers that are disabled at startup time.
-				// therefore not started but initiated.
-				if (scheduler.isStarted()) {
-					// This is to immediately stop the scheduler to avoid firing
-					// new services
-					scheduler.standby();
+                // gracefully shutdown
+                scheduler.shutdown(true);
+            }
 
-					if (logger.isDebugEnabled()) {
-						logger.debug("ShuttingDown Message Processor Scheduler : "
-								+ scheduler.getMetaData());
-					}
+        } catch (SchedulerException e) {
+            throw new SynapseException("Error ShuttingDown Message processor scheduler ", e);
+        }
 
-					try {
-						scheduler
-								.interrupt(new JobKey(
-										name + "-job",
-										MessageProcessorConstants.SCHEDULED_MESSAGE_PROCESSOR_GROUP));
-					} catch (UnableToInterruptJobException e) {
-						logger.info("Unable to interrupt job [" + name
-								+ "-job]");
-					}
-				}
+        if (logger.isDebugEnabled()) {
+            logger.debug("Stopped message processor [" + getName() + "].");
+        }
 
-				// gracefully shutdown
-				scheduler.shutdown(true);
-			}
+        return true;
+    }
 
-		} catch (SchedulerException e) {
-			throw new SynapseException(
-					"Error ShuttingDown Message processor scheduler ", e);
-		}
+    public void destroy() {
+        // Since for one scheduler there is only one job, we can simply shutdown the scheduler
+        // which will cause to shutdown the job
 
-		if (logger.isDebugEnabled()) {
-			logger.debug("Stopped message processor [" + getName() + "].");
-		}
+        stop();
 
-		return true;
-	}
+        if (getMessageConsumer() != null) {
+            boolean success = getMessageConsumer().cleanup();
+            if (!success) {
+                logger.error("[" + getName() + "] Could not cleanup message consumer.");
+            }
+        } else {
+            logger.warn("[" + getName() + "] Could not find the message consumer to cleanup.");
+        }
 
-	public void destroy() {
-		// Since for one scheduler there is only one job, we can simply shutdown
-		// the scheduler
-		// which will cause to shutdown the job
+        if (logger.isDebugEnabled()) {
+            logger.debug("Successfully destroyed message processor [" + getName() + "].");
+        }
+    }
 
-		stop();
+    public boolean deactivate() {
+        try {
+            if (scheduler != null && scheduler.isStarted()) {
+                if (logger.isDebugEnabled()) {
+                    logger.debug("Deactivating message processor [" + getName() + "]");
+                }
 
-		if (getMessageConsumer() != null) {
-			boolean success = getMessageConsumer().cleanup();
-			if (!success) {
-				logger.error("[" + getName()
-						+ "] Could not cleanup message consumer.");
-			}
-		} else {
-			logger.warn("[" + getName()
-					+ "] Could not find the message consumer to cleanup.");
-		}
+                // This is to immediately stop the scheduler to avoid firing new services
+                scheduler.standby();
 
-		if (logger.isDebugEnabled()) {
-			logger.debug("Successfully destroyed message processor ["
-					+ getName() + "].");
-		}
-	}
+                try {
+                    scheduler.interrupt(new JobKey(name + "-job", MessageProcessorConstants.SCHEDULED_MESSAGE_PROCESSOR_GROUP));
+                } catch (UnableToInterruptJobException e) {
+                    logger.info("Unable to interrupt job [" + name + "-job]");
+                }
 
-	public boolean deactivate() {
-		try {
-			if (scheduler != null && scheduler.isStarted()) {
-				if (logger.isDebugEnabled()) {
-					logger.debug("Deactivating message processor [" + getName()
-							+ "]");
-				}
+                // This is to remove the consumer from the queue.
+                messageConsumer.cleanup();
 
-				// This is to immediately stop the scheduler to avoid firing new
-				// services
-				scheduler.standby();
+                logger.info("Successfully deactivated the message processor [" + getName() + "]");
 
-				try {
-					scheduler
-							.interrupt(new JobKey(
-									name + "-job",
-									MessageProcessorConstants.SCHEDULED_MESSAGE_PROCESSOR_GROUP));
-				} catch (UnableToInterruptJobException e) {
-					logger.info("Unable to interrupt job [" + name + "-job]");
-				}
+                setActivated(isActive());
 
-				// This is to remove the consumer from the queue.
-				messageConsumer.cleanup();
+                // This means the deactivation has happened automatically. So we have to persist the
+                // deactivation manually.
+                if (isPaused()) {
+                    try {
+                        // TODO: Need to make sure if this is the best way.
+                        String directory = configuration.getPathToConfigFile() + "/message-processors";
+                        DeploymentEngine deploymentEngine = (DeploymentEngine) configuration.getAxisConfiguration().getConfigurator();
+                        MessageProcessorDeployer dep = (MessageProcessorDeployer) deploymentEngine.getDeployer(directory, "xml");
+                        dep.restoreSynapseArtifact(name);
+                    } catch (Exception e) {
+                        logger.warn("Couldn't persist the state of the message processor [" + name + "]");
+                    }
+                }
 
-				logger.info("Successfully deactivated the message processor ["
-						+ getName() + "]");
+                return true;
+            }
+            else {
+                return false;
+            }
+        } catch (SchedulerException e) {
+            throw new SynapseException("Error Standing-by Message processor scheduler ", e);
+        }
+    }
 
-				setActivated(isActive());
+    public boolean activate() {
+        try {
+            if (messageConsumer == null) {
+                // This is for the message processors who are deactivated at startup time.
+                setMessageConsumer(configuration.getMessageStore(messageStore).getConsumer());
+            }
+            if (scheduler != null && scheduler.isInStandbyMode()) {
+                if (logger.isDebugEnabled()) {
+                    logger.debug("Starting Message Processor Scheduler : " + scheduler.getMetaData());
+                }
 
-				// This means the deactivation has happened automatically. So we
-				// have to persist the
-				// deactivation manually.
-				if (isPaused()) {
-					try {
-						// TODO: Need to make sure if this is the best way.
-						String directory = configuration.getPathToConfigFile()
-								+ "/message-processors";
-						DeploymentEngine deploymentEngine = (DeploymentEngine) configuration
-								.getAxisConfiguration().getConfigurator();
-						MessageProcessorDeployer dep = (MessageProcessorDeployer) deploymentEngine
-								.getDeployer(directory, "xml");
-						dep.restoreSynapseArtifact(name);
-					} catch (Exception e) {
-						logger.warn("Couldn't persist the state of the message processor ["
-								+ name + "]");
-					}
-				}
+                scheduler.start();
 
-				return true;
-			} else {
-				return false;
-			}
-		} catch (SchedulerException e) {
-			throw new SynapseException(
-					"Error Standing-by Message processor scheduler ", e);
-		}
-	}
+                if (this.isPaused()) {
+                    resumeService();
+                }
 
-	public boolean activate() {
-		try {
-			if (messageConsumer == null) {
-				// This is for the message processors who are deactivated at
-				// startup time.
-				setMessageConsumer(configuration.getMessageStore(messageStore)
-						.getConsumer());
-			}
-			if (scheduler != null && scheduler.isInStandbyMode()) {
-				if (logger.isDebugEnabled()) {
-					logger.debug("Starting Message Processor Scheduler : "
-							+ scheduler.getMetaData());
-				}
+                logger.info("Successfully re-activated the message processor [" + getName() + "]");
 
-				scheduler.start();
+                setActivated(isActive());
 
-				if (this.isPaused()) {
-					resumeService();
-				}
+                return true;
+            }
+            else {
+                return false;
+            }
+        } catch (SchedulerException e) {
+            throw new SynapseException("Error Standing-by Message processor scheduler ", e);
+        }
+    }
 
-				logger.info("Successfully re-activated the message processor ["
-						+ getName() + "]");
+    public void pauseService() {
+        try {
+            this.scheduler.pauseTrigger(new TriggerKey(name + "-trigger"));
+            this.isPaused.set(true);
+        } catch (SchedulerException se) {
+            throw new SynapseException("Error while pausing the service", se);
+        }
+    }
 
-				setActivated(isActive());
+    public void resumeService() {
+        try {
+            this.scheduler.resumeTrigger(new TriggerKey(name + "-trigger"));
+            this.isPaused.set(false);
+        } catch (SchedulerException se) {
+            throw new SynapseException("Error while pausing the service", se);
+        }
+    }
 
-				return true;
-			} else {
-				return false;
-			}
-		} catch (SchedulerException e) {
-			throw new SynapseException(
-					"Error Standing-by Message processor scheduler ", e);
-		}
-	}
+    public boolean isActive() {
+        return !isDeactivated();
+    }
 
-	public void pauseService() {
-		try {
-			this.scheduler.pauseTrigger(new TriggerKey(name + "-trigger"));
-			this.isPaused.set(true);
-		} catch (SchedulerException se) {
-			throw new SynapseException("Error while pausing the service", se);
-		}
-	}
+    public boolean isPaused() {
+        return isPaused.get();
+    }
 
-	public void resumeService() {
-		try {
-			this.scheduler.resumeTrigger(new TriggerKey(name + "-trigger"));
-			this.isPaused.set(false);
-		} catch (SchedulerException se) {
-			throw new SynapseException("Error while pausing the service", se);
-		}
-	}
+    public boolean getActivated() {
+        return isActivated.get();
+    }
 
-	public boolean isActive() {
-		return !isDeactivated();
-	}
+    	public void setActivated(boolean activated) {
+    			if (activated) {
+    				messageProcessorState = MessageProcessorState.STARTED;
+    			} else {
+    				messageProcessorState = MessageProcessorState.STOPPED;
+    			}
+    			parameters.put(MessageProcessorConstants.IS_ACTIVATED,
+    					String.valueOf(activated));
+    		}
 
-	public boolean isPaused() {
-		return isPaused.get();
-	}
+    private Properties getSchedulerProperties(String name) {
+        Properties config = new Properties();
 
-	public boolean getActivated() {
-		return isActivated.get();
-	}
+        // This is important to have a separate scheduler for each message processor.
+        config.put(MessageProcessorConstants.SCHEDULER_INSTANCE_NAME, name);
+        config.put(MessageProcessorConstants.SCHEDULER_RMI_EXPORT, "false");
+        config.put(MessageProcessorConstants.SCHEDULER_RMI_PROXY, "false");
+        config.put(MessageProcessorConstants.SCHEDULER_WRAP_JOB_EXE_IN_USER_TRANSACTION, "false");
+        config.put(MessageProcessorConstants.THREAD_POOL_CLASS, "org.quartz.simpl.SimpleThreadPool");
+        // This is set to one because according to the current implementation one scheduler
+        // only have one job
+        config.put(MessageProcessorConstants.THREAD_POOL_THREAD_COUNT, "1");
+        config.put(MessageProcessorConstants.THREAD_POOL_THREAD_PRIORITY, "5");
+        config.put(MessageProcessorConstants.JOB_STORE_MISFIRE_THRESHOLD, "60000");
+        config.put(MessageProcessorConstants.THREAD_INHERIT_CONTEXT_CLASSLOADER_OF_INIT_THREAD, "true");
+        config.put(MessageProcessorConstants.JOB_STORE_CLASS, "org.quartz.simpl.RAMJobStore");
 
-	public void setActivated(boolean activated) {
-		if (activated) {
-			messageProcessorState = MessageProcessorState.STARTED;
-		} else {
-			messageProcessorState = MessageProcessorState.STOPPED;
-		}
-		parameters.put(MessageProcessorConstants.IS_ACTIVATED,
-				String.valueOf(activated));
-	}
+        return config;
+    }
 
-	private Properties getSchedulerProperties(String name) {
-		Properties config = new Properties();
+    private boolean isPinnedServer(String serverName) {
+        boolean pinned = false;
+        Object pinnedServersObj = this.parameters.get(MessageProcessorConstants.PINNED_SERVER);
 
-		// This is important to have a separate scheduler for each message
-		// processor.
-		config.put(MessageProcessorConstants.SCHEDULER_INSTANCE_NAME, name);
-		config.put(MessageProcessorConstants.SCHEDULER_RMI_EXPORT, "false");
-		config.put(MessageProcessorConstants.SCHEDULER_RMI_PROXY, "false");
-		config.put(
-				MessageProcessorConstants.SCHEDULER_WRAP_JOB_EXE_IN_USER_TRANSACTION,
-				"false");
-		config.put(MessageProcessorConstants.THREAD_POOL_CLASS,
-				"org.quartz.simpl.SimpleThreadPool");
-		// This is set to one because according to the current implementation
-		// one scheduler
-		// only have one job
-		config.put(MessageProcessorConstants.THREAD_POOL_THREAD_COUNT, "1");
-		config.put(MessageProcessorConstants.THREAD_POOL_THREAD_PRIORITY, "5");
-		config.put(MessageProcessorConstants.JOB_STORE_MISFIRE_THRESHOLD,
-				"60000");
-		config.put(
-				MessageProcessorConstants.THREAD_INHERIT_CONTEXT_CLASSLOADER_OF_INIT_THREAD,
-				"true");
-		config.put(MessageProcessorConstants.JOB_STORE_CLASS,
-				"org.quartz.simpl.RAMJobStore");
+        if (pinnedServersObj != null && pinnedServersObj instanceof String) {
 
-		return config;
-	}
+            String pinnedServers = (String) pinnedServersObj;
+            StringTokenizer st = new StringTokenizer(pinnedServers, " ,");
 
-	private boolean isPinnedServer(String serverName) {
-		boolean pinned = false;
-		Object pinnedServersObj = this.parameters
-				.get(MessageProcessorConstants.PINNED_SERVER);
+            while (st.hasMoreTokens()) {
+                String token = st.nextToken().trim();
+                if (serverName.equals(token)) {
+                    pinned = true;
+                    break;
+                }
+            }
+            if (!pinned) {
+                logger.info("Message processor '" + name + "' pinned on '" + pinnedServers + "' not starting on" +
+                        " this server '" + serverName + "'");
+            }
+        } else {
+            // this means we have to use the default value that is to start the message processor
+            pinned = true;
+        }
 
-		if (pinnedServersObj != null && pinnedServersObj instanceof String) {
+        return pinned;
+    }
 
-			String pinnedServers = (String) pinnedServersObj;
-			StringTokenizer st = new StringTokenizer(pinnedServers, " ,");
+    /**
+     * Quarts does not except 0 for its schedule interval. Therefore when the interval is zero we have
+     * to handle as a separate case.
+     * @param interval in which scheduler triggers its job.
+     * @return true if it has run on non-throttle mode.
+     */
+    protected boolean isThrottling(long interval) {
+        return interval == 0;
+    }
 
-			while (st.hasMoreTokens()) {
-				String token = st.nextToken().trim();
-				if (serverName.equals(token)) {
-					pinned = true;
-					break;
-				}
-			}
-			if (!pinned) {
-				logger.info("Message processor '" + name + "' pinned on '"
-						+ pinnedServers + "' not starting on"
-						+ " this server '" + serverName + "'");
-			}
-		} else {
-			// this means we have to use the default value that is to start the
-			// message processor
-			pinned = true;
-		}
-
-		return pinned;
-	}
-
-	/**
-	 * Quarts does not except 0 for its schedule interval. Therefore when the
-	 * interval is zero we have to handle as a separate case.
-	 * 
-	 * @param interval
-	 *            in which scheduler triggers its job.
-	 * @return true if it has run on non-throttle mode.
-	 */
-	protected boolean isThrottling(long interval) {
-		return interval == 0;
-	}
-
-	protected boolean isThrottling(String cronExpression) {
-		return cronExpression != null;
-	}
-
-	/**
+    protected boolean isThrottling(String cronExpression) {
+        return cronExpression != null;
+    }
+    
+    /**
 	 * Gives the {@link Task} instance associated with this processor.
 	 * 
 	 * @return {@link Task} associated with this processor.
