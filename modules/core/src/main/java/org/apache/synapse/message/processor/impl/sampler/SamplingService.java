@@ -31,22 +31,22 @@ import org.apache.synapse.task.Task;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 
-public class SamplingService implements Task, ManagedLifecycle  {
-    private static Log log = LogFactory.getLog(SamplingService.class);
+public class SamplingService implements Task, ManagedLifecycle {
+	private static Log log = LogFactory.getLog(SamplingService.class);
 
-    /** The consumer that is associated with the particular message store */
-    private MessageConsumer messageConsumer;
+	/** The consumer that is associated with the particular message store */
+	private MessageConsumer messageConsumer;
 
-    /** Owner of the this job */
-    private MessageProcessor messageProcessor;
+	/** Owner of the this job */
+	private MessageProcessor messageProcessor;
 
-    /** Determines how many messages at a time it should execute */
-    private int concurrency = 1;
+	/** Determines how many messages at a time it should execute */
+	private int concurrency = 1;
 
-    /** Represents the send sequence of a message */
-    private String sequence;
-    
-    private SynapseEnvironment synapseEnvironment;
+	/** Represents the send sequence of a message */
+	private String sequence;
+
+	private SynapseEnvironment synapseEnvironment;
 
 	private boolean initialized = false;
 
@@ -57,8 +57,8 @@ public class SamplingService implements Task, ManagedLifecycle  {
 		this.synapseEnvironment = synapseEnvironment;
 	}
 
-    public void execute(){
-        try {
+	public void execute() {
+		try {
 			/*
 			 * Initialize only if it is NOT already done. This will make sure
 			 * that the initialization is done only once.
@@ -67,131 +67,137 @@ public class SamplingService implements Task, ManagedLifecycle  {
 				this.init(synapseEnvironment);
 			}
 
-            if (!this.messageProcessor.isDeactivated()) {
-                for (int i = 0; i < concurrency; i++) {
+			if (!this.messageProcessor.isDeactivated()) {
+				for (int i = 0; i < concurrency; i++) {
 
-                    final MessageContext messageContext = fetch(messageConsumer);
+					final MessageContext messageContext = fetch(messageConsumer);
 
-                    if (messageContext != null) {
-                        dispatch(messageContext);
-                    }
-                    else {
-                        // either the connection is broken or there are no new massages.
-                        if (log.isDebugEnabled()) {
-                            log.debug("No messages were received for message processor ["+ messageProcessor.getName() + "]");
-                        }
-                    }
-                }
-            }
-            else {
-                if (log.isDebugEnabled()) {
-                    log.debug("Exiting service since the message processor is deactivated");
-                }
-            }
-        } catch (Throwable t) {
-            // All the possible recoverable exceptions are handles case by case and yet if it comes this
-            // we have to shutdown the processor
-            log.fatal("Deactivating the message processor [" + this.messageProcessor.getName() + "]", t);
+					if (messageContext != null) {
+						dispatch(messageContext);
+					} else {
+						// either the connection is broken or there are no new
+						// massages.
+						if (log.isDebugEnabled()) {
+							log.debug("No messages were received for message processor ["
+									+ messageProcessor.getName() + "]");
+						}
+					}
+				}
+			} else {
+				if (log.isDebugEnabled()) {
+					log.debug("Exiting service since the message processor is deactivated");
+				}
+			}
+		} catch (Throwable t) {
+			// All the possible recoverable exceptions are handles case by case
+			// and yet if it comes this
+			// we have to shutdown the processor
+			log.fatal("Deactivating the message processor ["
+					+ this.messageProcessor.getName() + "]", t);
 
-            this.messageProcessor.stop();
-        }
+			this.messageProcessor.stop();
+		}
 
-        if (log.isDebugEnabled()) {
-            log.debug("Exiting service thread of message processor [" + this.messageProcessor.getName() + "]");
-        }
-    }
+		if (log.isDebugEnabled()) {
+			log.debug("Exiting service thread of message processor ["
+					+ this.messageProcessor.getName() + "]");
+		}
+	}
 
-    	public void init(SynapseEnvironment se) {
-    			// Setting up the JMS consumer here.
-    			setMessageConsumer();
-    	
-    			Map<String, Object> parameterMap = messageProcessor.getParameters();
-    			sequence = (String) parameterMap.get(SamplingProcessor.SEQUENCE);
-    			String conc = (String) parameterMap.get(SamplingProcessor.CONCURRENCY);
-    			if (conc != null) {
-    	
-    				try {
-    					concurrency = Integer.parseInt(conc);
-    				} catch (NumberFormatException e) {
-    					parameterMap.remove(SamplingProcessor.CONCURRENCY);
-    					log.error(
-    							"Invalid value for concurrency switching back to default value",
-    							e);
-    				}
-    			}
-    	
-    			/*
-    			 * Make sure to set the isInitialized flag too TRUE in order to avoid
-    			 * re-initialization.
-    			 */
-    			initialized = true;
-    		}
+	public void init(SynapseEnvironment se) {
+		// Setting up the JMS consumer here.
+		setMessageConsumer();
 
-    public MessageContext fetch(MessageConsumer msgConsumer) {
-        MessageContext newMsg = messageConsumer.receive();
-        if (newMsg != null) {
-            messageConsumer.ack();
-        }
+		Map<String, Object> parameterMap = messageProcessor.getParameters();
+		sequence = (String) parameterMap.get(SamplingProcessor.SEQUENCE);
+		String conc = (String) parameterMap.get(SamplingProcessor.CONCURRENCY);
+		if (conc != null) {
 
-        return newMsg;
-    }
+			try {
+				concurrency = Integer.parseInt(conc);
+			} catch (NumberFormatException e) {
+				parameterMap.remove(SamplingProcessor.CONCURRENCY);
+				log.error(
+						"Invalid value for concurrency switching back to default value",
+						e);
+			}
+		}
 
-    public boolean dispatch(final MessageContext messageContext) {
+		/*
+		 * Make sure to set the isInitialized flag too TRUE in order to avoid
+		 * re-initialization.
+		 */
+		initialized = true;
+	}
 
-        final ExecutorService executor = messageContext.getEnvironment().
-                getExecutorService();
-        executor.submit(new Runnable() {
-            public void run() {
-                try {
-                    Mediator processingSequence = messageContext.getSequence(sequence);
-                    if (processingSequence != null) {
-                        processingSequence.mediate(messageContext);
-                    }
-                } catch (SynapseException syne) {
-                    if (!messageContext.getFaultStack().isEmpty()) {
-                        (messageContext.getFaultStack().pop()).handleFault(messageContext, syne);
-                    }
-                    log.error("Error occurred while executing the message", syne);
-                } catch (Throwable t) {
-                    // TODO : Should I send throw this ???
-                    log.error("Error occurred while executing the message", t);
-                }
-            }
-        });
+	public MessageContext fetch(MessageConsumer msgConsumer) {
+		MessageContext newMsg = messageConsumer.receive();
+		if (newMsg != null) {
+			messageConsumer.ack();
+		}
 
-        return true;
-    }
+		return newMsg;
+	}
 
-    public boolean terminate() {
-        messageConsumer.cleanup();
-        return true;
-    }
+	public boolean dispatch(final MessageContext messageContext) {
 
-   	private boolean setMessageConsumer() {
-    			final String messageStore = messageProcessor.getMessageStoreName();
-    			messageConsumer = synapseEnvironment.getSynapseConfiguration()
-    					.getMessageStore(messageStore).getConsumer();
-    			/*
-    			 * Make sure to set the same message consumer in the message processor
-    			 * since it is used by life-cycle management methods. Specially by the
-    			 * deactivate method to cleanup the connection before the deactivation.
-    			 */
-    			return messageProcessor.setMessageConsumer(messageConsumer);
-    	
-    		}
-    	
-    		/**
-    		 * Checks whether this TaskService is properly initialized or not.
-    		 * 
-    		 * @return <code>true</code> if this TaskService is properly initialized.
-    		 *         <code>false</code> otherwise.
-    		 */
-    		public boolean isInitialized() {
-    			return initialized;
-    		}
-    	
-    		public void destroy() {
-    			terminate();
-    			
-    		}
+		final ExecutorService executor = messageContext.getEnvironment()
+				.getExecutorService();
+		executor.submit(new Runnable() {
+			public void run() {
+				try {
+					Mediator processingSequence = messageContext
+							.getSequence(sequence);
+					if (processingSequence != null) {
+						processingSequence.mediate(messageContext);
+					}
+				} catch (SynapseException syne) {
+					if (!messageContext.getFaultStack().isEmpty()) {
+						(messageContext.getFaultStack().pop()).handleFault(
+								messageContext, syne);
+					}
+					log.error("Error occurred while executing the message",
+							syne);
+				} catch (Throwable t) {
+					// TODO : Should I send throw this ???
+					log.error("Error occurred while executing the message", t);
+				}
+			}
+		});
+
+		return true;
+	}
+
+	public boolean terminate() {
+		messageConsumer.cleanup();
+		return true;
+	}
+
+	private boolean setMessageConsumer() {
+		final String messageStore = messageProcessor.getMessageStoreName();
+		messageConsumer = synapseEnvironment.getSynapseConfiguration()
+				.getMessageStore(messageStore).getConsumer();
+		/*
+		 * Make sure to set the same message consumer in the message processor
+		 * since it is used by life-cycle management methods. Specially by the
+		 * deactivate method to cleanup the connection before the deactivation.
+		 */
+		return messageProcessor.setMessageConsumer(messageConsumer);
+
+	}
+
+	/**
+	 * Checks whether this TaskService is properly initialized or not.
+	 * 
+	 * @return <code>true</code> if this TaskService is properly initialized.
+	 *         <code>false</code> otherwise.
+	 */
+	public boolean isInitialized() {
+		return initialized;
+	}
+
+	public void destroy() {
+		terminate();
+
+	}
 }
