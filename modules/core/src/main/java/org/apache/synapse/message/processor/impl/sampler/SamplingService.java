@@ -25,19 +25,13 @@ import org.apache.synapse.MessageContext;
 import org.apache.synapse.SynapseException;
 import org.apache.synapse.message.MessageConsumer;
 import org.apache.synapse.message.processor.MessageProcessor;
-import org.apache.synapse.message.processor.MessageProcessorConstants;
-import org.apache.synapse.message.processor.Service;
-import org.apache.synapse.message.processor.impl.forwarder.ScheduledMessageForwardingProcessor;
-import org.quartz.InterruptableJob;
-import org.quartz.JobDataMap;
-import org.quartz.JobExecutionContext;
-import org.quartz.JobExecutionException;
-import org.quartz.UnableToInterruptJobException;
-
+import org.apache.synapse.ManagedLifecycle;
+import org.apache.synapse.core.SynapseEnvironment;
+import org.apache.synapse.task.Task;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 
-public class SamplingService implements InterruptableJob, Service {
+public class SamplingService implements Task, ManagedLifecycle  {
     private static Log log = LogFactory.getLog(SamplingService.class);
 
     /** The consumer that is associated with the particular message store */
@@ -51,11 +45,27 @@ public class SamplingService implements InterruptableJob, Service {
 
     /** Represents the send sequence of a message */
     private String sequence;
+    
+    private SynapseEnvironment synapseEnvironment;
 
-    public void execute(JobExecutionContext jobExecutionContext) throws JobExecutionException {
+	private boolean initialized = false;
 
+	public SamplingService(MessageProcessor messageProcessor,
+			SynapseEnvironment synapseEnvironment) {
+		super();
+		this.messageProcessor = messageProcessor;
+		this.synapseEnvironment = synapseEnvironment;
+	}
+
+    public void execute(){
         try {
-            init(jobExecutionContext);
+			/*
+			 * Initialize only if it is NOT already done. This will make sure
+			 * that the initialization is done only once.
+			 */
+			if (!initialized) {
+				this.init(synapseEnvironment);
+			}
 
             if (!this.messageProcessor.isDeactivated()) {
                 for (int i = 0; i < concurrency; i++) {
@@ -91,27 +101,31 @@ public class SamplingService implements InterruptableJob, Service {
         }
     }
 
-    public boolean init(JobExecutionContext jobExecutionContext) {
-
-        JobDataMap jdm = jobExecutionContext.getMergedJobDataMap();
-        Map<String, Object> parameters = (Map<String, Object>) jdm.get(MessageProcessorConstants.PARAMETERS);
-
-        messageConsumer = ((MessageProcessor)jdm.get(MessageProcessorConstants.PROCESSOR_INSTANCE)).getMessageConsumer();
-        sequence = (String) parameters.get(SamplingProcessor.SEQUENCE);
-        messageProcessor = (MessageProcessor)jdm.get(MessageProcessorConstants.PROCESSOR_INSTANCE);
-
-        String con = (String) parameters.get(SamplingProcessor.CONCURRENCY);
-        if (con != null) {
-            try {
-                concurrency = Integer.parseInt(con);
-            } catch (NumberFormatException nfe) {
-                parameters.remove(SamplingProcessor.CONCURRENCY);
-                log.error("Invalid value for concurrency switching back to default value", nfe);
-            }
-        }
-
-        return true;
-    }
+    	public void init(SynapseEnvironment se) {
+    			// Setting up the JMS consumer here.
+    			setMessageConsumer();
+    	
+    			Map<String, Object> parameterMap = messageProcessor.getParameters();
+    			sequence = (String) parameterMap.get(SamplingProcessor.SEQUENCE);
+    			String conc = (String) parameterMap.get(SamplingProcessor.CONCURRENCY);
+    			if (conc != null) {
+    	
+    				try {
+    					concurrency = Integer.parseInt(conc);
+    				} catch (NumberFormatException e) {
+    					parameterMap.remove(SamplingProcessor.CONCURRENCY);
+    					log.error(
+    							"Invalid value for concurrency switching back to default value",
+    							e);
+    				}
+    			}
+    	
+    			/*
+    			 * Make sure to set the isInitialized flag too TRUE in order to avoid
+    			 * re-initialization.
+    			 */
+    			initialized = true;
+    		}
 
     public MessageContext fetch(MessageConsumer msgConsumer) {
         MessageContext newMsg = messageConsumer.receive();
@@ -153,8 +167,31 @@ public class SamplingService implements InterruptableJob, Service {
         return true;
     }
 
-    public void interrupt() throws UnableToInterruptJobException {
-        // we don't need do anything here since this does not block on anything. This is
-        // here just to have the consistency with message forwarder.
-    }
+   	private boolean setMessageConsumer() {
+    			final String messageStore = messageProcessor.getMessageStoreName();
+    			messageConsumer = synapseEnvironment.getSynapseConfiguration()
+    					.getMessageStore(messageStore).getConsumer();
+    			/*
+    			 * Make sure to set the same message consumer in the message processor
+    			 * since it is used by life-cycle management methods. Specially by the
+    			 * deactivate method to cleanup the connection before the deactivation.
+    			 */
+    			return messageProcessor.setMessageConsumer(messageConsumer);
+    	
+    		}
+    	
+    		/**
+    		 * Checks whether this TaskService is properly initialized or not.
+    		 * 
+    		 * @return <code>true</code> if this TaskService is properly initialized.
+    		 *         <code>false</code> otherwise.
+    		 */
+    		public boolean isInitialized() {
+    			return initialized;
+    		}
+    	
+    		public void destroy() {
+    			terminate();
+    			
+    		}
 }
