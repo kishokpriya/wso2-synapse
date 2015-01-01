@@ -35,12 +35,20 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.StringTokenizer;
 import java.util.concurrent.atomic.AtomicBoolean;
+import org.apache.synapse.task.Task;
+import org.apache.synapse.task.TaskDescription;
+import org.apache.synapse.task.TaskManager;
 
 import static org.quartz.SimpleScheduleBuilder.simpleSchedule;
 import static org.quartz.TriggerBuilder.newTrigger;
 
 public abstract class ScheduledMessageProcessor extends AbstractMessageProcessor {
     private static final Log logger = LogFactory.getLog(ScheduledMessageProcessor.class.getName());
+ 
+    /**
+     *  Threshould interval value is 1000.
+     */
+    public static final long THRESHOULD_INTERVAL = 1000;
 
     /**
      * The scheduler, run the the processor
@@ -69,6 +77,16 @@ public abstract class ScheduledMessageProcessor extends AbstractMessageProcessor
     protected AtomicBoolean isPaused = new AtomicBoolean(false);
 
     private AtomicBoolean isActivated = new AtomicBoolean(true);
+    
+    private int memberCount = 1;
+	
+	public final String MEMBER_COUNT = "member.count";
+	
+	private TaskManager nTaskManager;
+	
+	private MessageProcessorState messageProcessorState = MessageProcessorState.OTHER;
+	
+	protected SynapseEnvironment synapseEnvironment;
 
     /**
      * This is specially used for REST scenarios where http status codes can take semantics in a RESTful architecture.
@@ -108,54 +126,53 @@ public abstract class ScheduledMessageProcessor extends AbstractMessageProcessor
         this.start();
     }
 
-    public boolean start() {
-
-        try {
-            if (isActivated.get()) {
-                setMessageConsumer(configuration.getMessageStore(messageStore).getConsumer());
-                scheduler.start();
-
-                if (logger.isDebugEnabled()) {
-                    logger.debug("Started message processor. [" + getName() + "].");
-                }
-            }
-        } catch (SchedulerException e) {
-            throw new SynapseException("Error starting the scheduler", e);
-        }
-
-        Trigger trigger;
-        TriggerBuilder<Trigger> triggerBuilder = newTrigger().withIdentity(name + "-trigger");
-
-        if (cronExpression == null || "".equals(cronExpression)) {
-            trigger = triggerBuilder
-                    .withSchedule(simpleSchedule()
-                        .withIntervalInMilliseconds(isThrottling(this.interval) ? 1000 : this.interval)
-                        .repeatForever()
-                        .withMisfireHandlingInstructionNextWithRemainingCount())
-                    .build();
-        } else {
-            trigger = triggerBuilder
-                    .startNow()
-                    .withSchedule(CronScheduleBuilder.cronSchedule(cronExpression)
-                        .withMisfireHandlingInstructionDoNothing())
-                    .build();
-        }
-
-        JobDataMap jobDataMap = getJobDataMap();
-        jobDataMap.put(MessageProcessorConstants.PARAMETERS, parameters);
-
-        JobBuilder jobBuilder = getJobBuilder();
-        JobDetail jobDetail = jobBuilder.usingJobData(jobDataMap).build();
-
-        try {
-            scheduler.scheduleJob(jobDetail, trigger);
-        } catch (SchedulerException e) {
-            throw new SynapseException("Error scheduling job : " + jobDetail
-                    + " with trigger " + trigger, e);
-        }
-
-        return true;
-    }
+    	public boolean start() {
+    			for (int i = 0; i < memberCount; i++) {
+    				/*
+    				 * Make sure to fetch the task after initializing the message sender
+    				 * and consumer properly. Otherwise you may get NullPointer
+    				 * exceptions.
+    				 */
+    				Task task = this.getTask();
+    				TaskDescription taskDescription = new TaskDescription();
+    				/*
+    				 * The same name should be used when deactivating, pausing,
+    				 * activating,deleting etc.
+    				 */
+    				if (i == 0) {
+    					taskDescription.setName(name);
+    				} else if (i > 0) {
+    					taskDescription.setName(name + i);
+    				}
+    	
+    				taskDescription
+    						.setTaskGroup(MessageProcessorConstants.SCHEDULED_MESSAGE_PROCESSOR_GROUP);
+    				/*
+    				 * If this interval value is less than 1000 ms, ntask will throw an
+    				 * exception while building the task. So to get around that we are
+    				 * setting threshold interval value of 1000 ms to the task
+    				 * description here. But actual interval value may be less than 1000
+    				 * ms, and hence isThrotling is set to TRUE.
+    				 */
+    				if (interval < THRESHOULD_INTERVAL) {
+    					taskDescription.setInterval(THRESHOULD_INTERVAL);
+    				} else {
+    					taskDescription.setInterval(interval);
+    				}
+    				taskDescription.setIntervalInMs(true);
+    				taskDescription.addResource(TaskDescription.INSTANCE, task);
+    				taskDescription.addResource(TaskDescription.CLASSNAME, task
+    						.getClass().getName());
+    	
+    				nTaskManager.schedule(taskDescription);
+    	
+    			}
+    			messageProcessorState = MessageProcessorState.STARTED;
+    			if (logger.isDebugEnabled()) {
+    				logger.debug("Started message processor. [" + getName() + "].");
+    			}
+    			return true;
+    		}
 
     public boolean isDeactivated() {
         try {
@@ -178,13 +195,13 @@ public abstract class ScheduledMessageProcessor extends AbstractMessageProcessor
             if (o != null) {
                 interval = Integer.parseInt(o.toString());
             }
-            o = parameters.get(MessageProcessorConstants.QUARTZ_CONF);
+            o = parameters.get(MEMBER_COUNT);
             if (o != null) {
-                quartzConfig = o.toString();
+            	memberCount = Integer.parseInt(o.toString());
             }
             o = parameters.get(MessageProcessorConstants.IS_ACTIVATED);
             if (o != null) {
-                isActivated.set(Boolean.valueOf(o.toString()));
+            	setActivated(Boolean.valueOf(o.toString()));
             }
             o = parameters.get(ForwardingProcessorConstants.NON_RETRY_STATUS_CODES);
             if (o != null) {
@@ -192,26 +209,6 @@ public abstract class ScheduledMessageProcessor extends AbstractMessageProcessor
                 nonRetryStatusCodes = o.toString().split(",");
             }
         }
-    }
-
-    private JobBuilder getJobBuilder() {
-        // This is just to set the default one
-        JobBuilder jobBuilder;
-
-        if (this instanceof SamplingProcessor) {
-            jobBuilder = JobBuilder.newJob(SamplingService.class);
-        }
-        else {
-            jobBuilder = JobBuilder.newJob(ForwardingService.class);
-        }
-
-        jobBuilder.withIdentity(name + "-job", MessageProcessorConstants.SCHEDULED_MESSAGE_PROCESSOR_GROUP);
-
-        return jobBuilder;
-    }
-
-    protected JobDataMap getJobDataMap() {
-        return new JobDataMap();
     }
 
     public boolean stop() {
@@ -442,4 +439,11 @@ public abstract class ScheduledMessageProcessor extends AbstractMessageProcessor
     protected boolean isThrottling(String cronExpression) {
         return cronExpression != null;
     }
+    
+    /**
+	 * Gives the {@link Task} instance associated with this processor.
+	 * 
+	 * @return {@link Task} associated with this processor.
+	 */
+	protected abstract Task getTask();
 }
