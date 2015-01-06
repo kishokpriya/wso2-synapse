@@ -57,8 +57,8 @@ public class SamplingService implements Task, ManagedLifecycle  {
 		this.synapseEnvironment = synapseEnvironment;
 	}
 
-    public void execute(){
-        try {
+	public void execute() {
+		try {
 			/*
 			 * Initialize only if it is NOT already done. This will make sure
 			 * that the initialization is done only once.
@@ -101,31 +101,31 @@ public class SamplingService implements Task, ManagedLifecycle  {
         }
     }
 
-    	public void init(SynapseEnvironment se) {
-    			// Setting up the JMS consumer here.
-    			setMessageConsumer();
-    	
-    			Map<String, Object> parameterMap = messageProcessor.getParameters();
-    			sequence = (String) parameterMap.get(SamplingProcessor.SEQUENCE);
-    			String conc = (String) parameterMap.get(SamplingProcessor.CONCURRENCY);
-    			if (conc != null) {
-    	
-    				try {
-    					concurrency = Integer.parseInt(conc);
-    				} catch (NumberFormatException e) {
-    					parameterMap.remove(SamplingProcessor.CONCURRENCY);
-    					log.error(
-    							"Invalid value for concurrency switching back to default value",
-    							e);
-    				}
-    			}
-    	
-    			/*
-    			 * Make sure to set the isInitialized flag too TRUE in order to avoid
-    			 * re-initialization.
-    			 */
-    			initialized = true;
-    		}
+	public void init(SynapseEnvironment se) {
+		// Setting up the JMS consumer here.
+		setMessageConsumer();
+
+		Map<String, Object> parameterMap = messageProcessor.getParameters();
+		sequence = (String) parameterMap.get(SamplingProcessor.SEQUENCE);
+		String conc = (String) parameterMap.get(SamplingProcessor.CONCURRENCY);
+		if (conc != null) {
+
+			try {
+				concurrency = Integer.parseInt(conc);
+			} catch (NumberFormatException e) {
+				parameterMap.remove(SamplingProcessor.CONCURRENCY);
+				log.error(
+						"Invalid value for concurrency switching back to default value",
+						e);
+			}
+		}
+
+		/*
+		 * Make sure to set the isInitialized flag too TRUE in order to avoid
+		 * re-initialization.
+		 */
+		initialized = true;
+	}
 
     public MessageContext fetch(MessageConsumer msgConsumer) {
         MessageContext newMsg = messageConsumer.receive();
@@ -167,31 +167,31 @@ public class SamplingService implements Task, ManagedLifecycle  {
         return true;
     }
 
-   	private boolean setMessageConsumer() {
-    			final String messageStore = messageProcessor.getMessageStoreName();
-    			messageConsumer = synapseEnvironment.getSynapseConfiguration()
-    					.getMessageStore(messageStore).getConsumer();
-    			/*
-    			 * Make sure to set the same message consumer in the message processor
-    			 * since it is used by life-cycle management methods. Specially by the
-    			 * deactivate method to cleanup the connection before the deactivation.
-    			 */
-    			return messageProcessor.setMessageConsumer(messageConsumer);
-    	
-    		}
-    	
-    		/**
-    		 * Checks whether this TaskService is properly initialized or not.
-    		 * 
-    		 * @return <code>true</code> if this TaskService is properly initialized.
-    		 *         <code>false</code> otherwise.
-    		 */
-    		public boolean isInitialized() {
-    			return initialized;
-    		}
-    	
-    		public void destroy() {
-    			terminate();
-    			
-    		}
+	private boolean setMessageConsumer() {
+		final String messageStore = messageProcessor.getMessageStoreName();
+		messageConsumer = synapseEnvironment.getSynapseConfiguration()
+				.getMessageStore(messageStore).getConsumer();
+		/*
+		 * Make sure to set the same message consumer in the message processor
+		 * since it is used by life-cycle management methods. Specially by the
+		 * deactivate method to cleanup the connection before the deactivation.
+		 */
+		return messageProcessor.setMessageConsumer(messageConsumer);
+
+	}
+
+	/**
+	 * Checks whether this TaskService is properly initialized or not.
+	 * 
+	 * @return <code>true</code> if this TaskService is properly initialized.
+	 *         <code>false</code> otherwise.
+	 */
+	public boolean isInitialized() {
+		return initialized;
+	}
+
+	public void destroy() {
+		terminate();
+
+	}
 }

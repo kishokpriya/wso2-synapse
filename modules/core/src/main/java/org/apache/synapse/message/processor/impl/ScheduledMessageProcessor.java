@@ -81,11 +81,11 @@ public abstract class ScheduledMessageProcessor extends AbstractMessageProcessor
     private int memberCount = 1;
 	
 	public final String MEMBER_COUNT = "member.count";
-	
+
 	private TaskManager nTaskManager;
-	
+
 	private MessageProcessorState messageProcessorState = MessageProcessorState.OTHER;
-	
+
 	protected SynapseEnvironment synapseEnvironment;
 
     /**
@@ -126,53 +126,53 @@ public abstract class ScheduledMessageProcessor extends AbstractMessageProcessor
         this.start();
     }
 
-    	public boolean start() {
-    			for (int i = 0; i < memberCount; i++) {
-    				/*
-    				 * Make sure to fetch the task after initializing the message sender
-    				 * and consumer properly. Otherwise you may get NullPointer
-    				 * exceptions.
-    				 */
-    				Task task = this.getTask();
-    				TaskDescription taskDescription = new TaskDescription();
-    				/*
-    				 * The same name should be used when deactivating, pausing,
-    				 * activating,deleting etc.
-    				 */
-    				if (i == 0) {
-    					taskDescription.setName(name);
-    				} else if (i > 0) {
-    					taskDescription.setName(name + i);
-    				}
-    	
-    				taskDescription
-    						.setTaskGroup(MessageProcessorConstants.SCHEDULED_MESSAGE_PROCESSOR_GROUP);
-    				/*
-    				 * If this interval value is less than 1000 ms, ntask will throw an
-    				 * exception while building the task. So to get around that we are
-    				 * setting threshold interval value of 1000 ms to the task
-    				 * description here. But actual interval value may be less than 1000
-    				 * ms, and hence isThrotling is set to TRUE.
-    				 */
-    				if (interval < THRESHOULD_INTERVAL) {
-    					taskDescription.setInterval(THRESHOULD_INTERVAL);
-    				} else {
-    					taskDescription.setInterval(interval);
-    				}
-    				taskDescription.setIntervalInMs(true);
-    				taskDescription.addResource(TaskDescription.INSTANCE, task);
-    				taskDescription.addResource(TaskDescription.CLASSNAME, task
-    						.getClass().getName());
-    	
-    				nTaskManager.schedule(taskDescription);
-    	
-    			}
-    			messageProcessorState = MessageProcessorState.STARTED;
-    			if (logger.isDebugEnabled()) {
-    				logger.debug("Started message processor. [" + getName() + "].");
-    			}
-    			return true;
-    		}
+	public boolean start() {
+		for (int i = 0; i < memberCount; i++) {
+			/*
+			 * Make sure to fetch the task after initializing the message sender
+			 * and consumer properly. Otherwise you may get NullPointer
+			 * exceptions.
+			 */
+			Task task = this.getTask();
+			TaskDescription taskDescription = new TaskDescription();
+			/*
+			 * The same name should be used when deactivating, pausing,
+			 * activating,deleting etc.
+			 */
+			if (i == 0) {
+				taskDescription.setName(name);
+			} else if (i > 0) {
+				taskDescription.setName(name + i);
+			}
+
+			taskDescription
+					.setTaskGroup(MessageProcessorConstants.SCHEDULED_MESSAGE_PROCESSOR_GROUP);
+			/*
+			 * If this interval value is less than 1000 ms, ntask will throw an
+			 * exception while building the task. So to get around that we are
+			 * setting threshold interval value of 1000 ms to the task
+			 * description here. But actual interval value may be less than 1000
+			 * ms, and hence isThrotling is set to TRUE.
+			 */
+			if (interval < THRESHOULD_INTERVAL) {
+				taskDescription.setInterval(THRESHOULD_INTERVAL);
+			} else {
+				taskDescription.setInterval(interval);
+			}
+			taskDescription.setIntervalInMs(true);
+			taskDescription.addResource(TaskDescription.INSTANCE, task);
+			taskDescription.addResource(TaskDescription.CLASSNAME, task
+					.getClass().getName());
+
+			nTaskManager.schedule(taskDescription);
+
+		}
+		messageProcessorState = MessageProcessorState.STARTED;
+		if (logger.isDebugEnabled()) {
+			logger.debug("Started message processor. [" + getName() + "].");
+		}
+		return true;
+	}
 
     public boolean isDeactivated() {
         try {
@@ -373,15 +373,15 @@ public abstract class ScheduledMessageProcessor extends AbstractMessageProcessor
         return isActivated.get();
     }
 
-    	public void setActivated(boolean activated) {
-    			if (activated) {
-    				messageProcessorState = MessageProcessorState.STARTED;
-    			} else {
-    				messageProcessorState = MessageProcessorState.STOPPED;
-    			}
-    			parameters.put(MessageProcessorConstants.IS_ACTIVATED,
-    					String.valueOf(activated));
-    		}
+	public void setActivated(boolean activated) {
+		if (activated) {
+			messageProcessorState = MessageProcessorState.STARTED;
+		} else {
+			messageProcessorState = MessageProcessorState.STOPPED;
+		}
+		parameters.put(MessageProcessorConstants.IS_ACTIVATED,
+				String.valueOf(activated));
+	}
 
     private Properties getSchedulerProperties(String name) {
         Properties config = new Properties();
@@ -445,7 +445,7 @@ public abstract class ScheduledMessageProcessor extends AbstractMessageProcessor
         return cronExpression != null;
     }
     
-    /**
+	/**
 	 * Gives the {@link Task} instance associated with this processor.
 	 * 
 	 * @return {@link Task} associated with this processor.

@@ -49,7 +49,7 @@ public class SamplingProcessor extends ScheduledMessageProcessor {
 		return view;
 	}
 
-    @Override
+	@Override
 	protected Task getTask() {
 		return new SamplingService(this, synapseEnvironment);
 	}
