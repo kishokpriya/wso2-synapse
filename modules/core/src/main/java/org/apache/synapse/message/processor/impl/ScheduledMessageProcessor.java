@@ -39,9 +39,6 @@ import org.apache.synapse.task.Task;
 import org.apache.synapse.task.TaskDescription;
 import org.apache.synapse.task.TaskManager;
 
-import static org.quartz.SimpleScheduleBuilder.simpleSchedule;
-import static org.quartz.TriggerBuilder.newTrigger;
-
 public abstract class ScheduledMessageProcessor extends AbstractMessageProcessor {
     private static final Log logger = LogFactory.getLog(ScheduledMessageProcessor.class.getName());
  
@@ -444,6 +441,15 @@ public abstract class ScheduledMessageProcessor extends AbstractMessageProcessor
     protected boolean isThrottling(String cronExpression) {
         return cronExpression != null;
     }
+    
+	/**
+	 * Retrieves the message processors current state.
+	 * 
+	 * @return current state of the message processor.
+	 */
+	public MessageProcessorState getMessageProcessorState() {
+		return messageProcessorState;
+	}
     
 	/**
 	 * Gives the {@link Task} instance associated with this processor.

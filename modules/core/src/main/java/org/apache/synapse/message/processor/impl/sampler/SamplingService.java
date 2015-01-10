@@ -34,27 +34,34 @@ import java.util.concurrent.ExecutorService;
 public class SamplingService implements Task, ManagedLifecycle  {
     private static Log log = LogFactory.getLog(SamplingService.class);
 
-    /** The consumer that is associated with the particular message store */
-    private MessageConsumer messageConsumer;
+	// The consumer that is associated with the particular message store
+	private MessageConsumer messageConsumer;
 
-    /** Owner of the this job */
-    private MessageProcessor messageProcessor;
+	// Owner of the this job
+	private MessageProcessor messageProcessor;
 
-    /** Determines how many messages at a time it should execute */
-    private int concurrency = 1;
+	// Determines how many messages at a time it should execute
+	private int concurrency = 1;
 
-    /** Represents the send sequence of a message */
-    private String sequence;
+	// Represents the send sequence of a message
+	private String sequence;
     
 	private SynapseEnvironment synapseEnvironment;
 
 	private boolean initialized = false;
+	
+	private final String concurrencyPropName;
+
+	private final String sequencePropName;
 
 	public SamplingService(MessageProcessor messageProcessor,
-			SynapseEnvironment synapseEnvironment) {
+			SynapseEnvironment synapseEnvironment, String concurrencyPropName,
+			String sequencePropName) {
 		super();
 		this.messageProcessor = messageProcessor;
 		this.synapseEnvironment = synapseEnvironment;
+		this.concurrencyPropName = concurrencyPropName;
+		this.sequencePropName = sequencePropName;
 	}
 
 	public void execute() {
@@ -106,14 +113,14 @@ public class SamplingService implements Task, ManagedLifecycle  {
 		setMessageConsumer();
 
 		Map<String, Object> parameterMap = messageProcessor.getParameters();
-		sequence = (String) parameterMap.get(SamplingProcessor.SEQUENCE);
-		String conc = (String) parameterMap.get(SamplingProcessor.CONCURRENCY);
+		sequence = (String) parameterMap.get(sequencePropName);
+		String conc = (String) parameterMap.get(concurrencyPropName);
 		if (conc != null) {
 
 			try {
 				concurrency = Integer.parseInt(conc);
 			} catch (NumberFormatException e) {
-				parameterMap.remove(SamplingProcessor.CONCURRENCY);
+				parameterMap.remove(concurrencyPropName);
 				log.error(
 						"Invalid value for concurrency switching back to default value",
 						e);
@@ -127,6 +134,14 @@ public class SamplingService implements Task, ManagedLifecycle  {
 		initialized = true;
 	}
 
+	/**
+	* Receives the next message from the message store.
+	 * 
+	* @param msgConsumer
+	*            message consumer
+	* @return {@link MessageContext} of the last message received from the
+	*         store.
+	*/
     public MessageContext fetch(MessageConsumer msgConsumer) {
         MessageContext newMsg = messageConsumer.receive();
         if (newMsg != null) {
@@ -136,7 +151,13 @@ public class SamplingService implements Task, ManagedLifecycle  {
         return newMsg;
     }
 
-    public boolean dispatch(final MessageContext messageContext) {
+    /**
+    * Sends the message to a given sequence.
+    * 
+    * @param messageContext
+    *            message to be injected.
+    */
+	public void dispatch(final MessageContext messageContext) {
 
         final ExecutorService executor = messageContext.getEnvironment().
                 getExecutorService();
@@ -153,19 +174,23 @@ public class SamplingService implements Task, ManagedLifecycle  {
                     }
                     log.error("Error occurred while executing the message", syne);
                 } catch (Throwable t) {
-                    // TODO : Should I send throw this ???
                     log.error("Error occurred while executing the message", t);
                 }
             }
         });
 
-        return true;
     }
 
-    public boolean terminate() {
-        messageConsumer.cleanup();
-        return true;
-    }
+	/**
+	 * Terminates the job of the message processor.
+	 * 
+	 * @return <code>true</code> if the job is terminated successfully,
+	 *         <code>false</code> otherwise.
+	 */
+	public boolean terminate() {
+		messageConsumer.cleanup();
+		return true;
+	}
 
 	private boolean setMessageConsumer() {
 		final String messageStore = messageProcessor.getMessageStoreName();
@@ -192,6 +217,5 @@ public class SamplingService implements Task, ManagedLifecycle  {
 
 	public void destroy() {
 		terminate();
-
 	}
 }
