@@ -46,7 +46,7 @@ public class SamplingService implements Task, ManagedLifecycle  {
     /** Represents the send sequence of a message */
     private String sequence;
     
-    private SynapseEnvironment synapseEnvironment;
+	private SynapseEnvironment synapseEnvironment;
 
 	private boolean initialized = false;
 
