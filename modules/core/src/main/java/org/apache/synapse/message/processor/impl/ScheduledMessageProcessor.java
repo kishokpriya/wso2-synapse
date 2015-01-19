@@ -74,10 +74,10 @@ public abstract class ScheduledMessageProcessor extends AbstractMessageProcessor
     protected AtomicBoolean isPaused = new AtomicBoolean(false);
 
     private AtomicBoolean isActivated = new AtomicBoolean(true);
-    
+
     private int memberCount = 1;
-	
-	public final String MEMBER_COUNT = "member.count";
+
+    private final String MEMBER_COUNT = "member.count";
 
 	private TaskManager nTaskManager;
 
@@ -123,8 +123,8 @@ public abstract class ScheduledMessageProcessor extends AbstractMessageProcessor
         this.start();
     }
 
-	public boolean start() {
-		for (int i = 0; i < memberCount; i++) {
+    public boolean start() {
+        for (int i = 0; i < memberCount; i++) {
 			/*
 			 * Make sure to fetch the task after initializing the message sender
 			 * and consumer properly. Otherwise you may get NullPointer
@@ -370,8 +370,8 @@ public abstract class ScheduledMessageProcessor extends AbstractMessageProcessor
         return isActivated.get();
     }
 
-	public void setActivated(boolean activated) {
-		if (activated) {
+    public void setActivated(boolean activated) {
+        if (activated) {
 			messageProcessorState = MessageProcessorState.STARTED;
 		} else {
 			messageProcessorState = MessageProcessorState.STOPPED;
