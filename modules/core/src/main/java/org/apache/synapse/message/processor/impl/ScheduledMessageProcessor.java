@@ -79,11 +79,11 @@ public abstract class ScheduledMessageProcessor extends AbstractMessageProcessor
 
     private final String MEMBER_COUNT = "member.count";
 
-	private TaskManager nTaskManager;
+    private TaskManager nTaskManager;
 
-	private MessageProcessorState messageProcessorState = MessageProcessorState.OTHER;
+    private MessageProcessorState messageProcessorState = MessageProcessorState.OTHER;
 
-	protected SynapseEnvironment synapseEnvironment;
+    protected SynapseEnvironment synapseEnvironment;
 
     /**
      * This is specially used for REST scenarios where http status codes can take semantics in a RESTful architecture.
