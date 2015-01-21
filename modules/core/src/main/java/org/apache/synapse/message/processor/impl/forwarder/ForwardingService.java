@@ -479,7 +479,7 @@ public class ForwardingService implements InterruptableJob, Service {
         }
     }
 
-    private void checkAndDeactivateProcessor(int attemptCount, int maxAttempts) {
+    private void checkAndDeactivateProcessor(int maxAttempts) {
         if (maxAttempts > 0) {
             this.attemptCount++;
 
@@ -523,7 +523,7 @@ public class ForwardingService implements InterruptableJob, Service {
                 log.info("Pausing the service of message processor [" + messageProcessor.getName() + "]");
             }
 
-            checkAndDeactivateProcessor(attemptCount, maxDeliverAttempts);
+            checkAndDeactivateProcessor(maxDeliverAttempts);
 
             if (log.isDebugEnabled()) {
                 log.debug("Failed to send to client retrying after " + retryInterval +
